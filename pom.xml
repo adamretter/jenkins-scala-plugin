@@ -11,11 +11,16 @@
         <!-- which version of Jenkins is this plugin built against? -->
     </parent>
  
-    <artifactId>jenkins-scala-plugin</artifactId>
+    <artifactId>jenkins-scala-plugin-parent</artifactId>
     <version>1.1-SNAPSHOT</version>
-    <packaging>hpi</packaging>
-    <name>Jenkins Scala Plugin</name>
+    <packaging>pom</packaging>
+    <name>Jenkins Scala Plugin Parent</name>
     <url>http://wiki.jenkins-ci.org/display/JENKINS/Scala+Plugin</url>
+
+    <modules>
+	<module>jenkins-scala-plugin-executer</module>
+	<module>jenkins-scala-plugin</module>
+    </modules>
 
     <licenses>
         <license>
@@ -72,74 +77,7 @@
             </plugins>
         </pluginManagement>
 
-
         <plugins>
-            <plugin>
-                <groupId>net.alchim31.maven</groupId>
-                <artifactId>scala-maven-plugin</artifactId>
-                <configuration>
-                    <recompileMode>incremental</recompileMode>   <!-- NOTE: incremental compilation although faster requires passing to MAVEN_OPTS="-XX:MaxPermSize=128m" -->
-                    <useZincServer>true</useZincServer>          <!-- NOTE: if you have Zinc server installed and running, you can get faster compilation by enabling this -->
-                    <!-- addScalacArgs>-feature</addScalacArgs -->
-                    <args>
-                        <arg>-Yresolve-term-conflict:object</arg>   <!-- required for package/object name conflict in Jenkins jar -->
-                    </args>
-                    <javacArgs>
-                        <javacArg>-Xlint:unchecked</javacArg>
-                        <javacArg>-Xlint:deprecation</javacArg>
-                    </javacArgs>
-					<excludes>
-						<exclude>**/resources/**</exclude>
-					</excludes>
-                </configuration>
-                <executions>
-                    <execution>
-                        <id>scala-compile-first</id>
-                        <phase>process-resources</phase>
-                        <goals>
-                            <goal>add-source</goal>
-                            <goal>compile</goal>
-                        </goals>
-                    </execution>
-                    <execution>
-                        <id>scala-test-compile</id>
-                        <phase>process-test-resources</phase>
-                        <goals>
-                            <goal>testCompile</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-compiler-plugin</artifactId>
-                <configuration>
-                    <source>${project.build.source.version}</source>
-                    <target>${project.build.target.version}</target>
-                    <encoding>${project.build.source.encoding}</encoding>
-                </configuration>
-                <executions>
-                    <execution>
-                        <phase>compile</phase>
-                        <goals>
-                            <goal>compile</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
-            <plugin>
-                <groupId>com.mmakowski</groupId>
-                <artifactId>maven-specs2-plugin</artifactId>
-                <executions>
-                    <execution>
-                        <id>verify</id>
-                        <phase>verify</phase>
-                        <goals>
-                            <goal>run-specs</goal>
-                        </goals>
-                    </execution>
-                </executions>
-            </plugin>
             <plugin>
                 <groupId>com.mycila.maven-license-plugin</groupId>
                 <artifactId>maven-license-plugin</artifactId>
@@ -189,31 +127,6 @@
         </dependencies>
     </dependencyManagement>
     
-    <dependencies>
-        <dependency>
-            <groupId>org.scala-lang</groupId>
-            <artifactId>scala-library</artifactId>
-        </dependency>
-
-        <dependency>
-            <groupId>org.scala-lang</groupId>
-            <artifactId>scala-compiler</artifactId>
-        </dependency>
-        
-        <dependency>
-            <groupId>com.github.scala-incubator.io</groupId>
-            <artifactId>scala-io-file_2.10</artifactId>
-            <version>0.4.2</version>
-        </dependency>
-
-        <dependency>
-            <groupId>org.specs2</groupId>
-            <artifactId>specs2_2.10</artifactId>
-            <version>1.14</version>
-            <scope>test</scope>
-        </dependency>
-    </dependencies>
-
     <repositories>
         <repository>
             <id>repo.jenkins-ci.org</id>

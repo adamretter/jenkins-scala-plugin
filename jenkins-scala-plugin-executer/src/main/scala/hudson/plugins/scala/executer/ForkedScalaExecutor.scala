@@ -1,0 +1,101 @@
+/**
+ * Copyright (c) 2013, Adam Retter <adam.retter@googlemail.com>
+ * All rights reserved.
+ *
+ * Redistribution and use in source and binary forms, with or without modification,
+ * are permitted provided that the following conditions are met:
+ *
+ *   Redistributions of source code must retain the above copyright notice, this
+ *   list of conditions and the following disclaimer.
+ *
+ *   Redistributions in binary form must reproduce the above copyright notice, this
+ *   list of conditions and the following disclaimer in the documentation and/or
+ *   other materials provided with the distribution.
+ *
+ *   Neither the name of the {organization} nor the names of its
+ *   contributors may be used to endorse or promote products derived from
+ *   this software without specific prior written permission.
+ *
+ * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND
+ * ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+ * WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+ * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR
+ * ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+ * (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+ * LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+ * ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+ * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+ * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+ */
+package hudson.plugins.scala.executer
+
+import hudson.model.{BuildListener, AbstractBuild}
+import hudson.{EnvVars, FilePath, Launcher}
+
+class ForkedScalaExecutor {
+
+  def execute(build: AbstractBuild[_, _], launcher: Launcher, listener: BuildListener, scalaHome: String, scalaExecutable: String, script: FilePath, scalaParameters: String, classpath: String, scriptParameters: String, debug: Boolean, suspend: Boolean, jdwpPort: Integer) : Boolean = {
+
+    /**
+     * Strings that come in from java may be null or empty
+     * but to us the effect is the same, we are only interested
+     * in strings with content
+     */
+    def nonEmptyString(javaString: String) : Option[String] = {
+      if(javaString == null || javaString.isEmpty) {
+        None
+      } else {
+        Some(javaString)
+      }
+    }
+
+    //TODO add checkbox options for "-nocompdaemon" and "-savecompiled" make nocompdaemon on by default
+    def scalaCmdParameters : Option[String] = Some(("-nocompdaemon" :: nonEmptyString(scalaParameters).toList).mkString(" ").trim())
+
+    def javaDebugParameters : Option[String] = {
+      def booleanToChar(boolean: Boolean) = if(boolean) 'y' else 'n'
+      debug match {
+        case true => Some(s"-J-debug -J-Xrunjdwp:transport=dt_socket,server=y,suspend=${booleanToChar(suspend)},address=$jdwpPort")
+        case false => None
+      }
+    }
+
+    def scalaClassPathParameter : Option[String] = nonEmptyString(classpath).map(cl => "-cp " + cl)
+
+    def execCommand(script: FilePath) : String = {
+      val cmdParts: List[Option[String]] = List(nonEmptyString(scalaExecutable), scalaCmdParameters, javaDebugParameters, scalaClassPathParameter, nonEmptyString(script.getRemote), nonEmptyString(scriptParameters))
+      cmdParts.flatten.mkString(" ")
+    }
+
+    def executeScript(env: EnvVars, workspace: FilePath, script: FilePath) : Boolean = {
+      val cmd = execCommand(script)
+      //val shell = new Shell(scala_launch_cmd)
+      listener.getLogger().println("Scala command is: " + cmd)
+
+      val result = launcher.launch().cmdAsSingleString(cmd).envs(env).stdout(listener).pwd(workspace).join()
+      //val result = launcher.launch().cmds(cmd).envs(env).stdout(listener).pwd(workspace).join()
+      //shell.perform(build, launcher, listener);
+      result == 0
+    }
+
+    val env = build.getEnvironment(listener)
+    nonEmptyString(scalaHome) match {
+      case Some(scalaHome) => {
+        env.put("SCALA_HOME", scalaHome)
+        listener.getLogger.println(s"Set SCALA_HOME=$scalaHome")
+      }
+      case None =>
+    }
+
+    val workspace = build.getWorkspace()
+    Option(script) match {
+      case Some(script) => {
+        executeScript(env, workspace, script)
+      }
+      case None => {
+        listener.fatalError("Could not process Scala Script")
+        false
+      }
+    }
+  }
+}
