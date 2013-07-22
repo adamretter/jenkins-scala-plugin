@@ -16,3 +16,15 @@ Most of the plugin is written in Java, as I could never get Jenkins to pick up i
 This project is available under the BSD Simplified License. Enjoy!
 
 The Scala plugin is based on the groovy-plugin https://github.com/jenkinsci/groovy-plugin
+
+Install Instructions
+====================
+Until the plugin is published to the Jenkins repository, you may build and install it by:
+
+$ git clone git@github.com:adamretter/jenkins-scala-plugin.git
+
+$ cd jenkins-scala-plugin
+
+$ mvn clean install
+
+You can then upload the HPI file jenkins-scala-plugin/target/jenkins-scala-plugin.hpi to Jenkins through the 'Advanced' panel of its 'Manage Plugins' Web UI.
