@@ -32,22 +32,9 @@ package hudson.plugins.scala.executer
 import hudson.model.{BuildListener, AbstractBuild}
 import hudson.{EnvVars, FilePath, Launcher}
 
-class ForkedScalaExecutor {
+class ForkedScalaExecutor extends ScalaExecuter {
 
   def execute(build: AbstractBuild[_, _], launcher: Launcher, listener: BuildListener, scalaHome: String, scalaExecutable: String, script: FilePath, scalaParameters: String, classpath: String, scriptParameters: String, debug: Boolean, suspend: Boolean, jdwpPort: Integer) : Boolean = {
-
-    /**
-     * Strings that come in from java may be null or empty
-     * but to us the effect is the same, we are only interested
-     * in strings with content
-     */
-    def nonEmptyString(javaString: String) : Option[String] = {
-      if(javaString == null || javaString.isEmpty) {
-        None
-      } else {
-        Some(javaString)
-      }
-    }
 
     //TODO add checkbox options for "-nocompdaemon" and "-savecompiled" make nocompdaemon on by default
     def scalaCmdParameters : Option[String] = Some(("-nocompdaemon" :: nonEmptyString(scalaParameters).toList).mkString(" ").trim())

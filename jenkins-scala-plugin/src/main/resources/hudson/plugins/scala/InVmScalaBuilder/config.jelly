@@ -55,9 +55,6 @@
     </f:setion>
 
     <f:advanced>
-      <f:entry title="Scala parameters">
-        <f:expandableTextbox name="forkedScalaBuilder.parameters" type="text" value="${instance.parameters}"/>
-      </f:entry>
       <f:entry title="Class path">
         <f:expandableTextbox name="forkedScalaBuilder.classPath" value="${instance.classPath}"/>
       </f:entry>

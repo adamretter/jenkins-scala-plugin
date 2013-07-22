@@ -45,6 +45,7 @@ import org.kohsuke.stapler.StaplerRequest;
 import hudson.plugins.scala.executer.ForkedScalaExecutor;
 
 public class ForkedScalaBuilder extends AbstractScalaBuilder {
+    private String parameters;
     private boolean debug;
     private boolean suspend;
     private String port;
@@ -53,13 +54,22 @@ public class ForkedScalaBuilder extends AbstractScalaBuilder {
     
     @DataBoundConstructor
     public ForkedScalaBuilder(final String scalaName, final ScriptSource scriptSource, final String parameters, final String classpath, final String scriptParameters, final boolean debug, final boolean suspend, final String port) {
-        super(scalaName, scriptSource, parameters, classpath, scriptParameters);
+        super(scalaName, scriptSource, classpath, scriptParameters);
+        this.parameters = parameters;
         this.debug = debug;
         this.suspend = suspend;
         this.port = port;
     }
     
     //<editor-fold desc="getter/setter">
+    public String getParameters() {
+        return parameters;
+    }
+
+    public void setParameters(final String parameters) {
+        this.parameters = parameters;
+    }
+    
     public boolean isDebug() {
         return debug;
     }
@@ -85,62 +95,9 @@ public class ForkedScalaBuilder extends AbstractScalaBuilder {
     }
     //</editor-fold>
 
-    private String getDefaultScalaExecutable(final Launcher launcher) {
-        if(launcher.isUnix()) {
-            return "scala";
-        } else {
-            return "scala.bat";
-        }
-    }
-
     @Override
-    public boolean perform(final AbstractBuild<?, ?> build, final Launcher launcher, final BuildListener listener) throws InterruptedException, IOException {
-
-        FilePath script = null;
-        try {
-            final EnvVars env = build.getEnvironment(listener);
-            final FilePath workspace = build.getWorkspace();
-            script = getScriptSource().getScriptFile(workspace, build, listener);
-
-            final ScalaInstallation scalaInstallation = getScalaInstallation();
-            final String scalaExecutable;
-            final String scalaHome;
-            if(scalaInstallation != null) {
-                listener.getLogger().println(String.format("Using Scala Installation '%s'", scalaInstallation.getName()));
-                scalaHome = scalaInstallation.getHome();
-                final String executable = scalaInstallation
-                        .forNode(Computer.currentComputer().getNode(), listener)
-                        .forEnvironment(env)
-                        .getExecutable(launcher, script.getChannel());
-                if(executable != null) {
-                    scalaExecutable = executable;
-                } else {
-                    final String defaultExecutable = getDefaultScalaExecutable(launcher);
-                    listener.getLogger().println("[SCALA WARNING] Scala executable is null, please check your Scala configuration, trying fallback '" + defaultExecutable + "' instead.");
-                    scalaExecutable = defaultExecutable;
-                }
-            } else {
-                scalaHome = null;
-                scalaExecutable = getDefaultScalaExecutable(launcher);
-            }
-
-            return new ForkedScalaExecutor().execute(build, launcher, listener, scalaHome, scalaExecutable, script, getParameters(), getClasspath(), getScriptParameters(), debug, suspend, Integer.parseInt(port));
-        } catch(final IOException ioe) {
-            Util.displayIOException(ioe, listener);
-            ioe.printStackTrace(listener.fatalError("command execution failed"));
-            return false;
-        } finally {
-            //try nd delete the script source
-            if(script != null && getScriptSource() instanceof StringScriptSource) {
-                //TODO re-enable!
-//                try {
-//                    script.delete();
-//                } catch(final IOException ioe) {
-//                    Util.displayIOException(ioe, listener);
-//                    ioe.printStackTrace(listener.fatalError("Unable to delete script file: " + script));
-//                }
-            }
-        }
+    public boolean perform(final AbstractBuild<?, ?> build, final Launcher launcher, final BuildListener listener, final String scalaHome, final String scalaExecutable, final FilePath script) throws InterruptedException, IOException {
+        return new ForkedScalaExecutor().execute(build, launcher, listener, scalaHome, scalaExecutable, script, getParameters(), getClasspath(), getScriptParameters(), debug, suspend, Integer.parseInt(port));
     }
     
     @Override

@@ -32,10 +32,18 @@
  */
 package hudson.plugins.scala;
 
+import hudson.EnvVars;
+import hudson.FilePath;
+import hudson.Launcher;
+import hudson.Util;
+import hudson.model.AbstractBuild;
+import hudson.model.BuildListener;
+import hudson.model.Computer;
 import hudson.model.Hudson;
 import hudson.tasks.BuildStepDescriptor;
 import hudson.tasks.Builder;
 import hudson.util.DescriptorList;
+import java.io.IOException;
 import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.StaplerRequest;
@@ -46,14 +54,12 @@ public abstract class AbstractScalaBuilder extends Builder {
 
     private String scalaName;
     private ScriptSource scriptSource;
-    private String parameters;
     private String classpath;
     private String scriptParameters;
 
-    public AbstractScalaBuilder(final String scalaName, final ScriptSource scriptSource, final String parameters, final String classpath, final String scriptParameters) {
+    public AbstractScalaBuilder(final String scalaName, final ScriptSource scriptSource, final String classpath, final String scriptParameters) {
         this.scalaName = scalaName;
         this.scriptSource = scriptSource;
-        this.parameters = parameters;
         this.classpath = classpath;
         this.scriptParameters = scriptParameters;
     }
@@ -65,14 +71,6 @@ public abstract class AbstractScalaBuilder extends Builder {
 
     public void setScriptSource(final ScriptSource scriptSource) {
         this.scriptSource = scriptSource;
-    }
-
-    public String getParameters() {
-        return parameters;
-    }
-
-    public void setParameters(final String parameters) {
-        this.parameters = parameters;
     }
 
     public String getClasspath() {
@@ -100,6 +98,65 @@ public abstract class AbstractScalaBuilder extends Builder {
             }
         }
         return null;
+    }
+    @Override
+    public boolean perform(final AbstractBuild<?, ?> build, final Launcher launcher, final BuildListener listener) throws InterruptedException, IOException {
+
+        FilePath script = null;
+        try {
+            final EnvVars env = build.getEnvironment(listener);
+            final FilePath workspace = build.getWorkspace();
+            script = getScriptSource().getScriptFile(workspace, build, listener);
+
+            final ScalaInstallation scalaInstallation = getScalaInstallation();
+            final String scalaExecutable;
+            final String scalaHome;
+            if(scalaInstallation != null) {
+                listener.getLogger().println(String.format("Using Scala Installation '%s'", scalaInstallation.getName()));
+                scalaHome = scalaInstallation.getHome();
+                final String executable = scalaInstallation
+                        .forNode(Computer.currentComputer().getNode(), listener)
+                        .forEnvironment(env)
+                        .getExecutable(launcher, script.getChannel());
+                if(executable != null) {
+                    scalaExecutable = executable;
+                } else {
+                    final String defaultExecutable = getDefaultScalaExecutable(launcher);
+                    listener.getLogger().println("[SCALA WARNING] Scala executable is null, please check your Scala configuration, trying fallback '" + defaultExecutable + "' instead.");
+                    scalaExecutable = defaultExecutable;
+                }
+            } else {
+                scalaHome = null;
+                scalaExecutable = getDefaultScalaExecutable(launcher);
+            }
+
+            return perform(build, launcher, listener, scalaHome, scalaExecutable, script);
+        } catch(final IOException ioe) {
+            Util.displayIOException(ioe, listener);
+            ioe.printStackTrace(listener.fatalError("command execution failed"));
+            return false;
+        } finally {
+            //try nd delete the script source
+            if(script != null && getScriptSource() instanceof StringScriptSource) {
+                //TODO re-enable!
+//                try {
+//                    script.delete();
+//                } catch(final IOException ioe) {
+//                    Util.displayIOException(ioe, listener);
+//                    ioe.printStackTrace(listener.fatalError("Unable to delete script file: " + script));
+//                }
+            }
+        }
+    }
+    
+    protected abstract boolean perform(final AbstractBuild<?, ?> build, final Launcher launcher, final BuildListener listener, final String scalaHome, final String scalaExecutable, final FilePath script) throws InterruptedException, IOException;
+    
+    private String getDefaultScalaExecutable(final Launcher launcher) {
+        if(launcher.isUnix()) {
+            return "scala";
+        } else {
+            return "scala.bat";
+        }
     }
 
     public static abstract class AbstractScalaDescriptor extends BuildStepDescriptor<Builder> {

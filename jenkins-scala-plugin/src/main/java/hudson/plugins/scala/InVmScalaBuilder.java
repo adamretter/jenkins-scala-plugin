@@ -33,6 +33,7 @@
 package hudson.plugins.scala;
 
 import hudson.Extension;
+import hudson.FilePath;
 import hudson.Launcher;
 import hudson.model.AbstractBuild;
 import hudson.model.AbstractProject;
@@ -46,18 +47,18 @@ import net.sf.json.JSONObject;
 import org.acegisecurity.Authentication;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.StaplerRequest;
+import hudson.plugins.scala.executer.InVmScalaExecuter;
 
 public class InVmScalaBuilder extends AbstractScalaBuilder {
 
     @DataBoundConstructor
-    public InVmScalaBuilder(final String scalaName, final ScriptSource scriptSource, final String parameters, final String classpath, final String scriptParameters) {
-        super(scalaName, scriptSource, parameters, classpath, scriptParameters);
+    public InVmScalaBuilder(final String scalaName, final ScriptSource scriptSource, final String classpath, final String scriptParameters) {
+        super(scalaName, scriptSource, classpath, scriptParameters);
     }
     
     @Override
-    public boolean perform(final AbstractBuild<?, ?> build, final Launcher launcher, final BuildListener listener) throws InterruptedException, IOException {
-        listener.getLogger().println("Executed InVM Scala");
-        return true;
+    public boolean perform(final AbstractBuild<?, ?> build, final Launcher launcher, final BuildListener listener, final String scalaHome, final String scalaExecutable, final FilePath script) throws InterruptedException, IOException {
+        return new InVmScalaExecuter().execute(build, launcher, listener, scalaHome, script, getClasspath(), getScriptParameters());
     }
     
     @Override
@@ -90,10 +91,9 @@ public class InVmScalaBuilder extends AbstractScalaBuilder {
         public Builder newInstance(final StaplerRequest req, final JSONObject data) throws FormException {
             final ScriptSource source = getScriptSource(req, data);
             final String scalaName = data.getString("scalaName");
-            final String params = data.getString("parameters");
             final String classpath = data.getString("classPath").trim();
             final String scriptParameters = data.getString("scriptParameters");
-            return new InVmScalaBuilder(scalaName, source, params, classpath, scriptParameters);
+            return new InVmScalaBuilder(scalaName, source, classpath, scriptParameters);
         }
         
         @Override
