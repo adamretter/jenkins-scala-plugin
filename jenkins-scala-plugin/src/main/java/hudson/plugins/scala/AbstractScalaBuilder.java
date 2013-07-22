@@ -65,6 +65,14 @@ public abstract class AbstractScalaBuilder extends Builder {
     }
 
     //<editor-fold desc="getter/setter">
+    public String getScalaName() {
+        return scalaName;
+    }
+
+    public void setScalaName(final String scalaName) {
+        this.scalaName = scalaName;
+    }
+    
     public ScriptSource getScriptSource() {
         return scriptSource;
     }
@@ -88,7 +96,6 @@ public abstract class AbstractScalaBuilder extends Builder {
     public void setScriptParameters(final String scriptParameters) {
         this.scriptParameters = scriptParameters;
     }
-
     //</editor-fold>
 
     protected ScalaInstallation getScalaInstallation() {
