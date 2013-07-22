@@ -1,7 +1,5 @@
-jenkins-scala-plugin
-====================
-
 Scala plugin for Jenkins
+========================
 
 The plugin offers the facility to Install and execute Scala scripts as a build step:
 
