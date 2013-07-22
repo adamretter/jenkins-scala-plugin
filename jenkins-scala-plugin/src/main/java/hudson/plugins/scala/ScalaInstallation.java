@@ -103,8 +103,11 @@ public class ScalaInstallation extends ToolInstallation implements EnvironmentSp
     @Extension
     public static class DescriptorImpl extends ToolDescriptor<ScalaInstallation> {                                                                                                                                                                                                 
         
-        @CopyOnWrite
-        private volatile List<ScalaInstallation> installations = new ArrayList<ScalaInstallation>();
+        private volatile ScalaInstallation[] installations = new ScalaInstallation[0];
+        
+        public DescriptorImpl() {
+            load();
+        }
         
         @Override                                                                                                                              
         public String getDisplayName() {                                                                                                       
@@ -118,12 +121,12 @@ public class ScalaInstallation extends ToolInstallation implements EnvironmentSp
                                                                                                                                               
         @Override                                                                                                                              
         public ScalaInstallation[] getInstallations() {                                                                                       
-            return installations.toArray(new ScalaInstallation[installations.size()]);
+            return installations;
         }                                                                                                                                      
                                                                                                                                                
         @Override                                                                                                                              
         public void setInstallations(final ScalaInstallation... installations) {                                                                    
-            this.installations.addAll(Arrays.asList(installations));
+            this.installations = installations;
             save();
         }                                                                                                                                      
     }       
