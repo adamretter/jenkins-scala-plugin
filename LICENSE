@@ -1,5 +1,8 @@
-Copyright (c) 2013, Adam Retter
+Copyright (c) 2013, Adam Retter <adam.retter@googlemail.com>
 All rights reserved.
+
+This software includes code from: groovy-plugin https://github.com/jenkinsci/groovy-plugin,
+Copyright (c) <2007> <Red Hat, Inc.>.
 
 Redistribution and use in source and binary forms, with or without modification,
 are permitted provided that the following conditions are met:
