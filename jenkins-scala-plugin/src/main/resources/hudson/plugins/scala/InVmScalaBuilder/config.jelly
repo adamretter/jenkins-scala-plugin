@@ -36,7 +36,7 @@
          xmlns:t="/lib/hudson" xmlns:f="/lib/form">
   <f:entry>
     <f:entry title="${%Scala Version}">
-      <select class="setting-input" name="forkedScalaBuilder.scalaName">
+      <select class="setting-input" name="inVmScalaBuilder.scalaName">
         <option value="(Default)">(${%Default})</option>
         <j:forEach var="inst" items="${descriptor.installations}">
             <f:option selected="${inst.name.equals(instance.scalaName)}" value="${inst.name}">${inst.name}</f:option>
@@ -56,10 +56,10 @@
 
     <f:advanced>
       <f:entry title="Class path">
-        <f:expandableTextbox name="forkedScalaBuilder.classPath" value="${instance.classPath}"/>
+        <f:expandableTextbox name="inVmScalaBuilder.classPath" value="${instance.classPath}"/>
       </f:entry>
       <f:entry title="Script parameters">
-        <f:expandableTextbox name="forkedScalaBuilder.scriptParameters" value="${instance.scriptParameters}"/>
+        <f:expandableTextbox name="inVmScalaBuilder.scriptParameters" value="${instance.scriptParameters}"/>
       </f:entry>
     </f:advanced>
     
