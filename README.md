@@ -1,7 +1,7 @@
 Scala plugin for Jenkins
 ========================
 
-[![Build Status](https://secure.travis-ci.org/adamretter/jenkins-scala-plugin.png)](http://travis-ci.org/adamretter/jenkins-scala-plugin)
+[![Build Status](https://travis-ci.org/adamretter/jenkins-scala-plugin.png?branch=master)](https://travis-ci.org/adamretter/jenkins-scala-plugin)
 
 The plugin offers the facility to Install and execute Scala scripts as a build step:
 
