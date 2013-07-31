@@ -29,7 +29,7 @@
  */
 package hudson.plugins.scala.executer
 
-import hudson.model.{BuildListener, AbstractBuild}
+import hudson.model.{Hudson, BuildListener, AbstractBuild}
 import hudson.{FilePath, Launcher}
 import java.io.PrintWriter
 import scala.tools.nsc.{ObjectRunner, Global, GenericRunnerSettings}
@@ -50,7 +50,7 @@ class InVmScalaExecuter extends ScalaExecuter {
     def compile(settings: GenericRunnerSettings, script: FilePath) {
       val reporter = jenkinsReporter(settings)
       val compiler = new Global(settings, reporter)
-      val run = new compiler.Run // MissingRequirementError
+      val run = new compiler.Run // NOTE: You will get a MissingRequirementError if the scala-library.jar is not on the bootclasspath
       run.compile(List(script.getRemote))
     }
 
@@ -76,14 +76,25 @@ class InVmScalaExecuter extends ScalaExecuter {
     //set the boot classpath
     nonEmptyString(scalaHome) match {
       case Some(scalaHome) if(Path.fromString(scalaHome).exists) => {
-        settings.bootclasspath.append(scalaHome + "/lib/scala-library.jar")
-        listener.getLogger.println("Using boot classpath: " + settings.bootclasspath.toString())
+        settings.bootclasspath.append(s"$scalaHome/lib/scala-library.jar")
       }
       case None =>
-        listener.getLogger.println("WARN: No scalaHome set or scalaHome does not exist, check you have selected a valid Scala installation")
+        listener.getLogger.println("[SCALA PLUGIN WARN] No scalaHome set or scalaHome does not exist, check you have selected a valid Scala installation")
     }
 
-    //TODO do we need to add Hudson jar(s) to the classpath?
+    //Add Hudson jar(s) to the boot classpath
+    val hudsonCl = Hudson.getInstance.getClass
+    Path(hudsonCl.getProtectionDomain.getCodeSource.getLocation.toURI) match {
+      case Some(hudsonJarPath) => {
+        settings.bootclasspath.append(hudsonJarPath.path)
+        settings.termConflict.tryToSetColon(List("object")) //"-Yresolve-term-conflict:object" needed as Jenkins uses packages and objects of the same name
+      }
+      case None =>
+        listener.getLogger.println("[SCALA PLUGIN WARN] Could not find jenkins-core-*.jar")
+    }
+
+    listener.getLogger.println(s"Using boot classpath: ${settings.bootclasspath.toString}")
+
     //set the user classpath
     nonEmptyString(classpath) match {
       case Some(classpath) => {
@@ -97,10 +108,12 @@ class InVmScalaExecuter extends ScalaExecuter {
           settings.classpath.append(classpathEntry)
         }
 
-        listener.getLogger.println("Using classpath: " + settings.classpath.toString())
+        listener.getLogger.println(s"Using classpath: settings.classpath.toString")
       }
       case None =>
     }
+
+    listener.getLogger.println(s"Using classpath: ${settings.classpath.toString}")
 
     //set script parameters
     val sParams : Seq[String] = nonEmptyString(scriptParameters) match {
@@ -118,6 +131,8 @@ class InVmScalaExecuter extends ScalaExecuter {
     val compilationDirectory = workspace.createTempDir("scala-plugin", ".compilation").getRemote
     settings.outdir.value = compilationDirectory
     listener.getLogger.println(s"Using temporary directory for compilation: $compilationDirectory")
+
+    listener.getLogger.println(s"Using Settings: ${settings.toConciseString}")
 
     Option(script) match {
       case Some(script) => {
