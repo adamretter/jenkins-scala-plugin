@@ -29,13 +29,13 @@
  */
 package hudson.plugins.scala.executer
 
-import scala.tools.nsc.{ObjectRunner, Global, GenericRunnerSettings}
-import scala.tools.nsc.reporters.{ConsoleReporter, AbstractReporter}
-import scala.tools.nsc.io._
 import hudson.model.{BuildListener, AbstractBuild}
 import hudson.{FilePath, Launcher}
-import scala.reflect.internal.util.{NoPosition, FakePos, Position}
 import java.io.PrintWriter
+import scala.tools.nsc.{ObjectRunner, Global, GenericRunnerSettings}
+import scala.tools.nsc.reporters.ConsoleReporter
+import scala.tools.nsc.io._
+import scalax.file.Path
 
 class InVmScalaExecuter extends ScalaExecuter {
 
@@ -59,7 +59,7 @@ class InVmScalaExecuter extends ScalaExecuter {
 
       //redirect stdout and stderr
       Console.setOut(listener.getLogger)
-      Console.setOut(listener.getLogger)
+      Console.setErr(listener.getLogger)
 
       ObjectRunner.runAndCatch(cp, settings.script.value, List.empty) match {
         case Left(ex) => {
@@ -75,11 +75,12 @@ class InVmScalaExecuter extends ScalaExecuter {
 
     //set the boot classpath
     nonEmptyString(scalaHome) match {
-      case Some(scalaHome) => {
+      case Some(scalaHome) if(Path.fromString(scalaHome).exists) => {
         settings.bootclasspath.append(scalaHome + "/lib/scala-library.jar")
         listener.getLogger.println("Using boot classpath: " + settings.bootclasspath.toString())
       }
       case None =>
+        listener.getLogger.println("WARN: No scalaHome set or scalaHome does not exist, check you have selected a valid Scala installation")
     }
 
     //TODO do we need to add Hudson jar(s) to the classpath?

@@ -48,6 +48,7 @@ import net.sf.json.JSONArray;
 import net.sf.json.JSONObject;
 import org.kohsuke.stapler.StaplerRequest;
 
+import java.io.PrintStream;
 import java.util.concurrent.atomic.AtomicInteger;
 
 public abstract class AbstractScalaBuilder extends Builder {
@@ -98,14 +99,37 @@ public abstract class AbstractScalaBuilder extends Builder {
     }
     //</editor-fold>
 
-    protected ScalaInstallation getScalaInstallation() {
-        for(final ScalaInstallation scalaInstallation : Hudson.getInstance().getDescriptorByType(ScalaInstallation.DescriptorImpl.class).getInstallations()) {
-            if(scalaInstallation.getName().equals(scalaName)) {
-                return scalaInstallation;
+    /**
+     * Returns the Scala Installation that corresponds to the getScalaName()
+     *
+     * @param logger The logger
+     *
+     *  @return The ScalaInstallation or null, if no installations are configured.
+     */
+    protected ScalaInstallation getScalaInstallation(final PrintStream logger) {
+
+        ScalaInstallation result = null;
+
+        final ScalaInstallation[] scalaInstallations = Hudson.getInstance().getDescriptorByType(ScalaInstallation.DescriptorImpl.class).getInstallations();
+        if(getScalaName().equals("Default")) {
+            if(scalaInstallations.length > 0) {
+                result = scalaInstallations[0];
+                logger.println("[SCALA PLUGIN WARNING] Using Default Scala Installation '" + result.getName() + "'");
+            } else {
+                logger.println("[SCALA PLUGIN WARNING] Default Scala Installation selected, but no Scala Installations configured. Check your Jenkins Settings!'" + result.getName() + "'");
+            }
+        } else {
+            for(final ScalaInstallation scalaInstallation : scalaInstallations) {
+                if(scalaInstallation.getName().equals(getScalaName())) {
+                    result = scalaInstallation;
+                    break;
+                }
             }
         }
-        return null;
+
+        return result;
     }
+
     @Override
     public boolean perform(final AbstractBuild<?, ?> build, final Launcher launcher, final BuildListener listener) throws InterruptedException, IOException {
 
@@ -115,7 +139,7 @@ public abstract class AbstractScalaBuilder extends Builder {
             final FilePath workspace = build.getWorkspace();
             script = getScriptSource().getScriptFile(workspace, build, listener);
 
-            final ScalaInstallation scalaInstallation = getScalaInstallation();
+            final ScalaInstallation scalaInstallation = getScalaInstallation(listener.getLogger());
             final String scalaExecutable;
             final String scalaHome;
             if(scalaInstallation != null) {
@@ -129,12 +153,14 @@ public abstract class AbstractScalaBuilder extends Builder {
                     scalaExecutable = executable;
                 } else {
                     final String defaultExecutable = getDefaultScalaExecutable(launcher);
-                    listener.getLogger().println("[SCALA WARNING] Scala executable is null, please check your Scala configuration, trying fallback '" + defaultExecutable + "' instead.");
+                    listener.getLogger().println("[SCALA PLUGIN WARNING] Scala executable is null, please check your Scala configuration, trying fallback '" + defaultExecutable + "' instead.");
                     scalaExecutable = defaultExecutable;
                 }
             } else {
                 scalaHome = null;
-                scalaExecutable = getDefaultScalaExecutable(launcher);
+                final String defaultExecutable = getDefaultScalaExecutable(launcher);
+                listener.getLogger().println("[SCALA PLUGIN WARNING] Scala executable is null, please check your Scala configuration, trying fallback '" + defaultExecutable + "' instead.");
+                scalaExecutable = defaultExecutable;
             }
 
             return perform(build, launcher, listener, scalaHome, scalaExecutable, script);
@@ -145,7 +171,7 @@ public abstract class AbstractScalaBuilder extends Builder {
         } finally {
             //try nd delete the script source
             if(script != null && getScriptSource() instanceof StringScriptSource) {
-                //TODO re-enable!
+                //TODO re-enable!  make option in UI?
 //                try {
 //                    script.delete();
 //                } catch(final IOException ioe) {
