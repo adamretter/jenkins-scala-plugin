@@ -54,14 +54,14 @@ class InVmScalaExecuter extends ScalaExecuter {
       run.compile(List(script.getRemote))
     }
 
-    def execute(settings: GenericRunnerSettings) : Boolean = {
+    def execute(settings: GenericRunnerSettings, scriptParameters: Seq[String] = Seq.empty) : Boolean = {
       val cp = File(settings.outdir.value).toURL +: settings.classpathURLs
 
       //redirect stdout and stderr
       Console.setOut(listener.getLogger)
       Console.setErr(listener.getLogger)
 
-      ObjectRunner.runAndCatch(cp, settings.script.value, List.empty) match {
+      ObjectRunner.runAndCatch(cp, settings.script.value, scriptParameters) match {
         case Left(ex) => {
           ex.printStackTrace(listener.fatalError(ex.getMessage))
           false
@@ -103,11 +103,11 @@ class InVmScalaExecuter extends ScalaExecuter {
     }
 
     //set script parameters
-    nonEmptyString(scriptParameters) match {
+    val sParams : Seq[String] = nonEmptyString(scriptParameters) match {
       case Some(scriptParameters) => {
-        //TODO script parameters
+        scriptParameters.split("""\s""")
       }
-      case None =>
+      case None => Seq.empty
     }
 
     //this tells the compiler that we are a script and not a valid scala compilation unit, so we set a default name for the class
@@ -122,8 +122,8 @@ class InVmScalaExecuter extends ScalaExecuter {
     Option(script) match {
       case Some(script) => {
         compile(settings, script)
-        execute(settings)
-        //TODO clean up the compilatonDirectory?
+        execute(settings, sParams)
+        //TODO clean up the compilationDirectory?
       }
       case None => {
         listener.fatalError("Could not process Scala Script")
