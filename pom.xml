@@ -7,7 +7,7 @@
     <parent>
         <groupId>org.jenkins-ci.plugins</groupId>
         <artifactId>plugin</artifactId>
-        <version>1.525</version>
+        <version>1.545</version>
         <!-- which version of Jenkins is this plugin built against? -->
     </parent>
  
@@ -18,8 +18,8 @@
     <url>http://wiki.jenkins-ci.org/display/JENKINS/Scala+Plugin</url>
 
     <modules>
-	<module>jenkins-scala-plugin-executer</module>
-	<module>jenkins-scala-plugin</module>
+	    <module>jenkins-scala-plugin-executer</module>
+	    <module>jenkins-scala-plugin</module>
     </modules>
 
     <licenses>
@@ -32,7 +32,7 @@
     <scm>
         <connection>scm:git:https://github.com/adamretter/jenkins-scala-plugin.git</connection>
         <developerConnection>scm:git:https://git@github.com/adamretter/jenkins-scala-plugin.git</developerConnection>
-        <url>https://github.com/adamretter/ijenkins-scala-plugin</url>
+        <url>https://github.com/adamretter/jenkins-scala-plugin</url>
     </scm>
 
     <developers>
@@ -44,7 +44,7 @@
     </developers>
 
     <properties>
-        <scala.version>2.10.2</scala.version>
+        <scala.version>2.10.3</scala.version>
         <project.build.source.version>1.6</project.build.source.version>
         <project.build.target.version>1.6</project.build.target.version>
         <project.build.source.encoding>UTF-8</project.build.source.encoding>
@@ -57,7 +57,7 @@
                 <plugin>
                     <groupId>net.alchim31.maven</groupId>
                     <artifactId>scala-maven-plugin</artifactId>
-                    <version>3.1.5</version>
+                    <version>3.1.6</version>
                 </plugin>
                 <plugin>
                     <groupId>org.apache.maven.plugins</groupId>
@@ -67,7 +67,7 @@
                 <plugin>
                     <groupId>com.mmakowski</groupId>
                     <artifactId>maven-specs2-plugin</artifactId>
-                    <version>0.4.1</version>
+                    <version>0.4.2</version>
                 </plugin>
                 <plugin>
                     <groupId>com.mycila.maven-license-plugin</groupId>
