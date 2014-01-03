@@ -29,13 +29,34 @@
  */
 package hudson.plugins.scala.executer
 
-import hudson.model.{Hudson, BuildListener, AbstractBuild}
+import hudson.model.{BuildListener, AbstractBuild}
+import jenkins.model.{Jenkins}
 import hudson.{FilePath, Launcher}
 import java.io.PrintWriter
-import scala.tools.nsc.{ObjectRunner, Global, GenericRunnerSettings}
+import scala.tools.nsc.{CommonRunner, GenericRunnerSettings}
 import scala.tools.nsc.reporters.ConsoleReporter
 import scala.tools.nsc.io._
 import scalax.file.Path
+import scala.tools.reflect.ReflectGlobal
+import scala.Some
+import java.net.URLClassLoader
+
+trait InVmRunner extends CommonRunner {
+
+  import scala.tools.nsc.util.ScalaClassLoader
+  import scala.tools.nsc.util.Exceptional.unwrap
+
+  def run(cl: ClassLoader, objectName: String, arguments: Seq[String]) {
+    ScalaClassLoader(cl).run(objectName, arguments)
+  }
+
+  def runAndCatch(cl: ClassLoader, objectName: String, arguments: Seq[String]): Either[Throwable, Boolean] = {
+    try   { run(cl, objectName, arguments) ; Right(true) }
+    catch { case e: Throwable => Left(unwrap(e)) }
+  }
+}
+
+object ObjectInVmRunner extends InVmRunner {}
 
 class InVmScalaExecuter extends ScalaExecuter {
 
@@ -49,8 +70,9 @@ class InVmScalaExecuter extends ScalaExecuter {
 
     def compile(settings: GenericRunnerSettings, script: FilePath) {
       val reporter = jenkinsReporter(settings)
-      val compiler = new Global(settings, reporter)
-      val run = new compiler.Run // NOTE: You will get a MissingRequirementError if the scala-library.jar is not on the bootclasspath
+
+      val compiler = new ReflectGlobal(settings, reporter, Jenkins.getInstance.getPluginManager.uberClassLoader)
+      val run = new compiler.Run
       run.compile(List(script.getRemote))
     }
 
@@ -61,7 +83,8 @@ class InVmScalaExecuter extends ScalaExecuter {
       Console.setOut(listener.getLogger)
       Console.setErr(listener.getLogger)
 
-      ObjectRunner.runAndCatch(cp, settings.script.value, scriptParameters) match {
+      val runnerClasspath = new URLClassLoader(Array(File(settings.outdir.value).toURL), Jenkins.getInstance.getPluginManager.uberClassLoader)
+      ObjectInVmRunner.runAndCatch(runnerClasspath, settings.script.value, scriptParameters) match {
         case Left(ex) => {
           ex.printStackTrace(listener.fatalError(ex.getMessage))
           false
@@ -71,28 +94,22 @@ class InVmScalaExecuter extends ScalaExecuter {
       }
     }
 
+    def logProcess[T](processName: String, process: => T): T = {
+      listener.getLogger.println(s"Starting $processName...")
+      val result = process //exec process
+      listener.getLogger.println(s"Complete $processName.")
+
+      result
+    }
+
+    //TEMP
+    listener.getLogger.println("app.class.path=" + Jenkins.getInstance.getPluginManager.uberClassLoader.getResource("app.class.path"))
+    listener.getLogger.println("boot.class.path=" + Jenkins.getInstance.getPluginManager.uberClassLoader.getResource("boot.class.path"))
+    //END TEMP
+
+
     val settings = new GenericRunnerSettings(errorFn)
-
-    //set the boot classpath
-    nonEmptyString(scalaHome) match {
-      case Some(scalaHome) if(Path.fromString(scalaHome).exists) => {
-        settings.bootclasspath.append(s"$scalaHome/lib/scala-library.jar")
-      }
-      case None =>
-        listener.getLogger.println("[SCALA PLUGIN WARN] No scalaHome set or scalaHome does not exist, check you have selected a valid Scala installation")
-    }
-
-    //Add Hudson jar(s) to the boot classpath
-    val hudsonCl = Hudson.getInstance.getClass
-    Path(hudsonCl.getProtectionDomain.getCodeSource.getLocation.toURI) match {
-      case Some(hudsonJarPath) => {
-        settings.bootclasspath.append(hudsonJarPath.path)
-        settings.termConflict.tryToSetColon(List("object")) //"-Yresolve-term-conflict:object" needed as Jenkins uses packages and objects of the same name
-      }
-      case None =>
-        listener.getLogger.println("[SCALA PLUGIN WARN] Could not find jenkins-core-*.jar")
-    }
-
+    settings.termConflict.tryToSetColon(List("object")) //"-Yresolve-term-conflict:object" needed as Jenkins uses packages and objects of the same name
     listener.getLogger.println(s"Using boot classpath: ${settings.bootclasspath.toString}")
 
     //set the user classpath
@@ -107,13 +124,13 @@ class InVmScalaExecuter extends ScalaExecuter {
         for(classpathEntry <- classpathEntries) {
           settings.classpath.append(classpathEntry)
         }
-
-        listener.getLogger.println(s"Using classpath: settings.classpath.toString")
       }
       case None =>
     }
 
     listener.getLogger.println(s"Using classpath: ${settings.classpath.toString}")
+
+    listener.getLogger.println(s"classpathURLs: ${settings.classpathURLs}")
 
     //set script parameters
     val sParams : Seq[String] = nonEmptyString(scriptParameters) match {
@@ -124,7 +141,7 @@ class InVmScalaExecuter extends ScalaExecuter {
     }
 
     //this tells the compiler that we are a script and not a valid scala compilation unit, so we set a default name for the class
-    settings.script.value = "Main"
+    settings.script.value = "MainInVmScalaScript" + System.nanoTime //TODO must be unique, need a unique class name depending on when the script changes (hash of script) or file changes (last modified time?)
 
     //set directory for compilation
     val workspace = build.getWorkspace
@@ -136,9 +153,9 @@ class InVmScalaExecuter extends ScalaExecuter {
 
     Option(script) match {
       case Some(script) => {
-        compile(settings, script)
-        execute(settings, sParams)
-        //TODO clean up the compilationDirectory?
+        logProcess("compilation", compile(settings, script))
+        logProcess("Execution", execute(settings, sParams))
+        //TODO clean up the compilationDirectory? //or use VirtualDirectory like ScalaScriptEngine?
       }
       case None => {
         listener.fatalError("Could not process Scala Script")

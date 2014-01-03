@@ -28,3 +28,24 @@ $ cd jenkins-scala-plugin
 $ mvn clean install
 
 You can then upload the HPI file jenkins-scala-plugin/target/jenkins-scala-plugin.hpi to Jenkins through the 'Advanced' panel of its 'Manage Plugins' Web UI.
+
+Example In-Vm Executer Use
+==========================
+Using the following Script it is possible to add a release number based on the the buildnumber to a build parameter:
+
+```scala
+import hudson.model.Executor
+import hudson.model.Run
+import hudson.model.ParametersAction
+import hudson.model.StringParameterValue
+import scala.collection.JavaConversions._
+
+val executable = Thread.currentThread.asInstanceOf[Executor].getCurrentExecutable()
+val run : Run[_, _] = executable.asInstanceOf[Run[_, _]]
+val release = "x.y." + run.getNumber
+
+println(s"Setting RELEASE_NO as: $release")
+run.addAction(new ParametersAction(List(new StringParameterValue("RELEASE_NO", release))))
+```
+
+The above code is an indirect port to Scala of the Groovy example given here: http://www.agitech.co.uk/implementing-a-deployment-pipeline-with-jenkins/
