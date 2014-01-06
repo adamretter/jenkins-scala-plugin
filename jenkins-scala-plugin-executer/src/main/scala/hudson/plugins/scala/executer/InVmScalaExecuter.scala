@@ -30,16 +30,18 @@
 package hudson.plugins.scala.executer
 
 import hudson.model.{BuildListener, AbstractBuild}
-import jenkins.model.{Jenkins}
 import hudson.{FilePath, Launcher}
-import java.io.PrintWriter
-import scala.tools.nsc.{CommonRunner, GenericRunnerSettings}
-import scala.tools.nsc.reporters.ConsoleReporter
-import scala.tools.nsc.io._
-import scalax.file.Path
-import scala.tools.reflect.ReflectGlobal
-import scala.Some
+import hudson.remoting.VirtualChannel
+import jenkins.model.{Jenkins}
+import java.io.{Closeable, File => JFile, IOException, ObjectInputStream, ObjectOutputStream, PrintWriter}
 import java.net.URLClassLoader
+import java.util.concurrent.locks.{Lock, ReentrantReadWriteLock}
+import scala.Console
+import scala.tools.nsc.{CommonRunner, GenericRunnerSettings}
+import scala.tools.nsc.io.File
+import scala.tools.nsc.reporters.ConsoleReporter
+import scala.tools.reflect.ReflectGlobal
+
 
 trait InVmRunner extends CommonRunner {
 
@@ -51,16 +53,26 @@ trait InVmRunner extends CommonRunner {
   }
 
   def runAndCatch(cl: ClassLoader, objectName: String, arguments: Seq[String]): Either[Throwable, Boolean] = {
-    try   { run(cl, objectName, arguments) ; Right(true) }
-    catch { case e: Throwable => Left(unwrap(e)) }
+    try {
+      run(cl, objectName, arguments);
+      Right(true)
+    } catch {
+      case e: Throwable => Left(unwrap(e))
+    }
   }
 }
 
 object ObjectInVmRunner extends InVmRunner {}
 
+class FilePathExtractor extends FilePath.FileCallable[JFile] {
+  def invoke(f: JFile, channel: VirtualChannel) = f
+}
+
 class InVmScalaExecuter extends ScalaExecuter {
 
   def execute(build: AbstractBuild[_, _], launcher: Launcher, listener: BuildListener, scalaHome: String, script: FilePath, classpath: String, scriptParameters: String) : Boolean = {
+
+    lazy val workspace = build.getWorkspace
 
     def errorFn(message: String) {
       listener.fatalError(message)
@@ -68,22 +80,38 @@ class InVmScalaExecuter extends ScalaExecuter {
 
     def jenkinsReporter(settings: GenericRunnerSettings) = new ConsoleReporter(settings, Console.in, new PrintWriter(listener.getLogger))
 
-    def compile(settings: GenericRunnerSettings, script: FilePath) {
-      val reporter = jenkinsReporter(settings)
+    /**
+     * @return the path to the directory containing the
+     *         compiled class files
+     */
+    def compile(settings: GenericRunnerSettings) : FilePath = {
+      val compilationDirectory = workspace.createTempDir("scala-plugin", ".compilation")
+      listener.getLogger.println(s"Using temporary directory for compilation: $compilationDirectory")
 
-      val compiler = new ReflectGlobal(settings, reporter, Jenkins.getInstance.getPluginManager.uberClassLoader)
-      val run = new compiler.Run
-      run.compile(List(script.getRemote))
+      val compilationDirectoryFile = compilationDirectory.act(new FilePathExtractor)
+      settings.outdir.value = compilationDirectoryFile.getAbsolutePath
+
+      logProcess("compilation") {
+        val reporter = jenkinsReporter(settings)
+        val compiler = new ReflectGlobal(settings, reporter, Jenkins.getInstance.getPluginManager.uberClassLoader)
+        val run = new compiler.Run
+
+        val scriptFile = script.act(new FilePathExtractor)
+
+        run.compile(List(scriptFile.getAbsolutePath))
+      }
+
+      compilationDirectory
     }
 
-    def execute(settings: GenericRunnerSettings, scriptParameters: Seq[String] = Seq.empty) : Boolean = {
+    def execute(settings: GenericRunnerSettings, compilationDir: JFile, scriptParameters: Seq[String] = Seq.empty) : Boolean = {
       val cp = File(settings.outdir.value).toURL +: settings.classpathURLs
 
       //redirect stdout and stderr
       Console.setOut(listener.getLogger)
       Console.setErr(listener.getLogger)
 
-      val runnerClasspath = new URLClassLoader(Array(File(settings.outdir.value).toURL), Jenkins.getInstance.getPluginManager.uberClassLoader)
+      val runnerClasspath = new URLClassLoader(Array(File(compilationDir).toURL), Jenkins.getInstance.getPluginManager.uberClassLoader)
       ObjectInVmRunner.runAndCatch(runnerClasspath, settings.script.value, scriptParameters) match {
         case Left(ex) => {
           ex.printStackTrace(listener.fatalError(ex.getMessage))
@@ -94,7 +122,7 @@ class InVmScalaExecuter extends ScalaExecuter {
       }
     }
 
-    def logProcess[T](processName: String, process: => T): T = {
+    def logProcess[T](processName: String)(process: => T): T = {
       listener.getLogger.println(s"Starting $processName...")
       val result = process //exec process
       listener.getLogger.println(s"Complete $processName.")
@@ -102,65 +130,170 @@ class InVmScalaExecuter extends ScalaExecuter {
       result
     }
 
-    //TEMP
-    listener.getLogger.println("app.class.path=" + Jenkins.getInstance.getPluginManager.uberClassLoader.getResource("app.class.path"))
-    listener.getLogger.println("boot.class.path=" + Jenkins.getInstance.getPluginManager.uberClassLoader.getResource("boot.class.path"))
-    //END TEMP
+    /**
+     * Sets up the user defined classpath
+     */
+    def setupUserDefinedClasspath(settings: GenericRunnerSettings) {
+      nonEmptyString(classpath) match {
+        case Some(classpath) => {
+          val classpathEntries = if(launcher.isUnix) {
+            classpath.split(':')
+          } else {
+            classpath.split(';')
+          }
 
-
-    val settings = new GenericRunnerSettings(errorFn)
-    settings.termConflict.tryToSetColon(List("object")) //"-Yresolve-term-conflict:object" needed as Jenkins uses packages and objects of the same name
-    listener.getLogger.println(s"Using boot classpath: ${settings.bootclasspath.toString}")
-
-    //set the user classpath
-    nonEmptyString(classpath) match {
-      case Some(classpath) => {
-        val classpathEntries = if(launcher.isUnix) {
-          classpath.split(':')
-        } else {
-          classpath.split(';')
+          for(classpathEntry <- classpathEntries) {
+            settings.classpath.append(classpathEntry)
+          }
         }
-
-        for(classpathEntry <- classpathEntries) {
-          settings.classpath.append(classpathEntry)
-        }
+        case None =>
       }
-      case None =>
     }
 
-    listener.getLogger.println(s"Using classpath: ${settings.classpath.toString}")
-
-    listener.getLogger.println(s"classpathURLs: ${settings.classpathURLs}")
-
-    //set script parameters
-    val sParams : Seq[String] = nonEmptyString(scriptParameters) match {
-      case Some(scriptParameters) => {
-        scriptParameters.split("""\s""")
+    def extractScriptParameters() : Seq[String] = {
+      nonEmptyString(scriptParameters) match {
+        case Some(scriptParameters) => {
+          scriptParameters.split("""\s""")
+        }
+        case None => Seq.empty
       }
-      case None => Seq.empty
     }
 
-    //this tells the compiler that we are a script and not a valid scala compilation unit, so we set a default name for the class
-    settings.script.value = "MainInVmScalaScript" + System.nanoTime //TODO must be unique, need a unique class name depending on when the script changes (hash of script) or file changes (last modified time?)
+    @throws(classOf[IOException])
+    def using[C <: Closeable, T](is: C)(f: C => T): T = {
+      try {
+        f(is)
+      } finally {
+        is.close()
+      }
+    }
 
-    //set directory for compilation
-    val workspace = build.getWorkspace
-    val compilationDirectory = workspace.createTempDir("scala-plugin", ".compilation").getRemote
-    settings.outdir.value = compilationDirectory
-    listener.getLogger.println(s"Using temporary directory for compilation: $compilationDirectory")
+    type Filename = String
+    type Hash = String
+    type CompilationDirectory = FilePath
 
-    listener.getLogger.println(s"Using Settings: ${settings.toConciseString}")
+    val cacheFile = new FilePath(workspace, "invmscalaexecuter.cache")
+    val cacheLock = new ReentrantReadWriteLock
 
+    def locked[T](lock: => Lock, f: => T) : T = {
+      lock.lock()
+      try {
+        f
+      } finally {
+        lock.unlock()
+      }
+    }
+
+    def readLocked[T](f: => T) : T = locked(cacheLock.readLock, f)
+
+    def writeLocked[T](f: => T) : T = locked(cacheLock.writeLock, f)
+
+    def getCache() : Map[Filename, (Hash, CompilationDirectory)] = {
+      if(cacheFile.exists) {
+        //read the cache from the file
+        readLocked {
+          using(new ObjectInputStream(cacheFile.read)) {
+            is =>
+              is.readObject().asInstanceOf[Map[Filename, (Hash, FilePath)]]
+          }
+        }
+      } else {
+        //no cache
+        Map.empty[Filename, (Hash, CompilationDirectory)]
+      }
+    }
+
+    /**
+     * @return Some(cachedCompilationDirectory or None
+     */
+    def findCachedCompilation : Option[FilePath] = {
+      val cache = getCache()
+      if(cache.isEmpty) {
+        //no cache, therefore this is a new script that needs compiling
+        None
+      } else {
+
+        //calculate the hash of the current script
+        val currentHash = script.digest
+
+        //check currentHash against prevHash of the script
+        cache.get(script.getName()) match {
+          case Some((prevHash, cachedCompilationDirectory)) if(prevHash == currentHash) =>
+            //no change to script, can used cached version
+
+            //check cached compilation still exists
+            if(cachedCompilationDirectory.exists) {
+              listener.getLogger.println("Using cached compilation: " + cachedCompilationDirectory.getRemote)
+              Some(cachedCompilationDirectory)
+            } else {
+              None
+            }
+          case _ =>
+            //script has changed, or this is a new script, therefore we need to re-compile
+            None
+        }
+      }
+    }
+
+    def updateCacheRecord(newCompilationDirectory: FilePath) {
+      val cache = getCache()
+
+      val updatedCache = cache + (script.getName -> (script.digest, newCompilationDirectory))
+
+      writeLocked {
+        if(cacheFile.exists) {
+          cacheFile.deleteContents
+        }
+        using(new ObjectOutputStream(cacheFile.write())) {
+          os =>
+            os.writeObject(updatedCache)
+        }
+      }
+    }
+
+    def compileAndExecute = {
+      val settings = new GenericRunnerSettings(errorFn)
+      settings.termConflict.tryToSetColon(List("object")) //"-Yresolve-term-conflict:object" needed as Jenkins uses packages and objects of the same name
+      listener.getLogger.println(s"Using boot classpath: ${settings.bootclasspath.toString}")
+
+      setupUserDefinedClasspath(settings)
+
+      listener.getLogger.println(s"Using classpath: ${settings.classpath.toString}")
+      listener.getLogger.println(s"classpathURLs: ${settings.classpathURLs}")
+
+      //set script parameters
+      val sParams = extractScriptParameters
+
+      //this tells the compiler that we are a script and not a valid scala compilation unit, so we set a default name for the class
+      //also used as the classname for the executer to execute
+      //settings.script.value = "MainInVmScalaScript" + System.nanoTime //TODO must be unique, need a unique class name depending on when the script changes (hash of script) or file changes (last modified time?)
+      settings.script.value = script.getBaseName
+
+      listener.getLogger.println(s"Using Settings: ${settings.toConciseString}")
+
+      //compiler or get cached compiled
+      val compilationDirectory = findCachedCompilation getOrElse {
+        val newCompilationDirectory = compile(settings)
+        updateCacheRecord(newCompilationDirectory)
+        newCompilationDirectory
+      }
+
+      //execute
+      val compilationDirectoryFile = compilationDirectory.act(new FilePathExtractor)
+      logProcess("Execution") {
+        execute(settings, compilationDirectoryFile, sParams)
+      }
+    }
+
+    //business time!
     Option(script) match {
-      case Some(script) => {
-        logProcess("compilation", compile(settings, script))
-        logProcess("Execution", execute(settings, sParams))
-        //TODO clean up the compilationDirectory? //or use VirtualDirectory like ScalaScriptEngine?
-      }
-      case None => {
-        listener.fatalError("Could not process Scala Script")
+      case Some(script) =>
+        compileAndExecute
+        true
+
+      case None =>
+        listener.fatalError("Could not process Scala Script, no script provided!")
         false
-      }
     }
   }
 
