@@ -1,5 +1,5 @@
 /**
- * Copyright (c) 2013, Adam Retter <adam.retter@googlemail.com>
+ * Copyright (c) 2014, Adam Retter <adam.retter@googlemail.com>
  * All rights reserved.
  *
  * This software includes code from: groovy-plugin https://github.com/jenkinsci/groovy-plugin,
